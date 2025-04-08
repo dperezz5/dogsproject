@@ -1,10 +1,59 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { firestore } from '../firebase/config';
+
+interface DogProfile {
+  id: string;
+  name: string;
+  breed: string;
+  age: number;
+  gender: string;
+  images: string[];
+}
 
 const Dashboard: React.FC = () => {
   const { currentUser, signOut } = useAuth();
   const navigate = useNavigate();
+  const [userName, setUserName] = useState("User");
+  const [dogProfiles, setDogProfiles] = useState<DogProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    // Set the user's display name or email as the greeting name
+    if (currentUser) {
+      if (currentUser.displayName) {
+        setUserName(currentUser.displayName.split(' ')[0]);
+      } else if (currentUser.email) {
+        // Use the part before the @ in the email
+        setUserName(currentUser.email.split('@')[0]);
+      }
+      // Fetch dog profiles
+      fetchDogProfiles();
+    }
+  }, [currentUser]);
+
+  const fetchDogProfiles = async () => {
+    if (!currentUser) return;
+    
+    try {
+      const dogsRef = collection(firestore, 'dogProfiles');
+      const q = query(dogsRef, where('ownerId', '==', currentUser.uid));
+      const querySnapshot = await getDocs(q);
+      
+      const profiles: DogProfile[] = [];
+      querySnapshot.forEach((doc) => {
+        profiles.push({ id: doc.id, ...doc.data() } as DogProfile);
+      });
+      
+      setDogProfiles(profiles);
+    } catch (error) {
+      console.error('Error fetching dog profiles:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSignOut = async () => {
     try {
@@ -50,35 +99,136 @@ const Dashboard: React.FC = () => {
             {/* iPad Content */}
             <div className="flex-1 overflow-auto p-6">
               <div className="max-w-4xl mx-auto">
-                <h1 className="text-2xl font-bold text-gray-800 mb-6 font-poppins">
-                  Welcome to Your Dashboard
+                <h1 className="text-3xl font-bold mb-8 font-poppins main-gradient">
+                  Welcome, {userName}!
                 </h1>
                 
-                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                  <h2 className="text-xl font-semibold text-gray-700 mb-2">User Information</h2>
-                  <p className="text-gray-600"><span className="font-medium">Email:</span> {currentUser?.email}</p>
-                  <p className="text-gray-600"><span className="font-medium">User ID:</span> {currentUser?.uid}</p>
+                {/* User Profile Section - New Addition */}
+                <div className="mb-8 bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                  <div className="bg-gradient-to-r from-dogswipe-yellow to-dogswipe-orange p-4 border-b border-gray-100">
+                    <h2 className="text-xl font-semibold text-white">My Profile</h2>
+                  </div>
+                  
+                  <div className="p-6">
+                    <div className="flex flex-col md:flex-row md:items-center">
+                      <div className="flex-shrink-0 mb-4 md:mb-0 md:mr-6">
+                        {currentUser?.photoURL ? (
+                          <img 
+                            src={currentUser.photoURL} 
+                            alt="Profile" 
+                            className="w-24 h-24 rounded-full object-cover border-4 border-dogswipe-orange" 
+                          />
+                        ) : (
+                          <div className="w-24 h-24 rounded-full bg-dogswipe-orange/20 flex items-center justify-center border-4 border-dogswipe-orange">
+                            <span className="text-2xl font-bold text-dogswipe-orange">
+                              {userName.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="flex-grow">
+                        <h3 className="text-xl font-bold text-gray-800 mb-2">
+                          {currentUser?.displayName || userName}
+                        </h3>
+                        <p className="text-gray-600 mb-1">
+                          <span className="font-medium">Email:</span> {currentUser?.email}
+                        </p>
+                        <p className="text-gray-600 mb-4">
+                          <span className="font-medium">Member since:</span> {currentUser?.metadata?.creationTime ? new Date(currentUser.metadata.creationTime).toLocaleDateString() : 'N/A'}
+                        </p>
+                        
+                        <Link to="/edit-profile" className="inline-flex items-center px-4 py-2 bg-dogswipe-orange text-white rounded-full text-sm font-medium hover:bg-dogswipe-red transition-colors">
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          Edit Profile
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-dogswipe-yellow/10 p-4 rounded-xl">
-                      <h3 className="font-semibold text-lg text-dogswipe-orange mb-2">Your Dogs</h3>
-                      <p className="text-gray-600">You haven't added any dogs yet.</p>
-                      <button className="mt-3 px-4 py-2 bg-dogswipe-orange text-white rounded-full text-sm font-medium hover:bg-dogswipe-red transition-colors">
-                        Add a Dog
-                      </button>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Left Column: Dogs */}
+                  <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                    <div className="bg-dogswipe-orange/10 p-4 border-b border-gray-100">
+                      <h2 className="text-xl font-semibold text-dogswipe-orange">Your Dogs</h2>
                     </div>
                     
-                    <div className="bg-dogswipe-teal/10 p-4 rounded-xl">
-                      <h3 className="font-semibold text-lg text-dogswipe-teal mb-2">Recent Matches</h3>
-                      <p className="text-gray-600">No matches found yet.</p>
-                      <button className="mt-3 px-4 py-2 bg-dogswipe-teal text-white rounded-full text-sm font-medium hover:bg-dogswipe-teal/80 transition-colors">
-                        Discover Dogs
-                      </button>
+                    <div className="p-4">
+                      {loading ? (
+                        <div className="text-center py-8">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-dogswipe-orange mx-auto"></div>
+                          <p className="mt-4 text-gray-500">Loading your dogs...</p>
+                        </div>
+                      ) : dogProfiles.length === 0 ? (
+                        <div className="text-center py-8">
+                          <svg className="w-16 h-16 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          <p className="mt-2 text-gray-500">You haven't added any dogs yet</p>
+                          <button 
+                            onClick={() => navigate('/dog-profile')}
+                            className="mt-4 px-4 py-2 bg-dogswipe-orange text-white rounded-full text-sm font-medium hover:bg-dogswipe-red transition-colors"
+                          >
+                            Add Your First Dog
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {dogProfiles.map((dog) => (
+                            <div key={dog.id} className="flex items-center p-4 bg-gray-50 rounded-lg">
+                              {dog.images && dog.images.length > 0 ? (
+                                <img 
+                                  src={dog.images[0]} 
+                                  alt={dog.name}
+                                  className="w-16 h-16 rounded-full object-cover mr-4"
+                                />
+                              ) : (
+                                <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center mr-4">
+                                  <span className="text-2xl text-gray-400">🐕</span>
+                                </div>
+                              )}
+                              <div>
+                                <h3 className="font-semibold text-gray-800">{dog.name}</h3>
+                                <p className="text-sm text-gray-600">{dog.breed} • {dog.age} years old</p>
+                              </div>
+                            </div>
+                          ))}
+                          <button 
+                            onClick={() => navigate('/dog-profile')}
+                            className="w-full mt-4 px-4 py-2 bg-dogswipe-orange text-white rounded-full text-sm font-medium hover:bg-dogswipe-red transition-colors"
+                          >
+                            Add Another Dog
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
+                  {/* Right Column: Chats */}
+                  <div className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                    <div className="bg-dogswipe-teal/10 p-4 border-b border-gray-100">
+                      <h2 className="text-xl font-semibold text-dogswipe-teal">Chat History</h2>
+                    </div>
+                    
+                    <div className="p-4">
+                      {/* Empty state */}
+                      <div className="text-center py-8">
+                        <svg className="w-16 h-16 mx-auto text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        <p className="mt-2 text-gray-500">No chat history yet</p>
+                        <button className="mt-4 px-4 py-2 bg-dogswipe-teal text-white rounded-full text-sm font-medium hover:bg-dogswipe-teal/80 transition-colors">
+                          Start Looking for Matches
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-8 text-center">
                   <button
                     onClick={handleSignOut}
                     className="px-6 py-3 bg-gray-200 text-gray-700 rounded-full text-base font-medium hover:bg-gray-300 transition-colors"

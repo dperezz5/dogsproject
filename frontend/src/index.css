@@ -28,3 +28,15 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Custom gradient classes */
+.main-gradient {
+  @apply bg-gradient-to-r from-dogswipe-yellow via-dogswipe-orange to-dogswipe-red;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.main-bg-gradient {
+  @apply bg-gradient-to-br from-dogswipe-yellow via-dogswipe-orange to-dogswipe-red;
+}
