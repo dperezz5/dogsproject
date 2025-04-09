@@ -1,12 +1,13 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { doc, setDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { useNavigate, useParams } from 'react-router-dom';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { firestore, storage } from '../firebase/config';
 import { v4 as uuidv4 } from 'uuid';
 
-const DogProfile: React.FC = () => {
+const DogProfileEdit: React.FC = () => {
+  const { id } = useParams<{ id: string }>();
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,9 +30,54 @@ const DogProfile: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedImagePreviews, setUploadedImagePreviews] = useState<string[]>([]);
   const [uploadLoading, setUploadLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  
+  // Fetch dog profile data when component mounts
+  useEffect(() => {
+    const fetchDogProfile = async () => {
+      if (!id) {
+        setError('No profile ID provided');
+        setLoading(false);
+        return;
+      }
+      
+      try {
+        const docRef = doc(firestore, 'dogProfiles', id);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const dogData = docSnap.data();
+          setFormData({
+            name: dogData.name || '',
+            breed: dogData.breed || '',
+            age: dogData.age?.toString() || '',
+            gender: dogData.gender || 'male',
+            size: dogData.size || 'medium',
+            weight: dogData.weight?.toString() || '',
+            description: dogData.description || '',
+            temperament: dogData.temperament || 'friendly',
+            neutered: dogData.neutered || false,
+            exerciseNeeds: dogData.exerciseNeeds || 'medium',
+            favoriteActivities: Array.isArray(dogData.favoriteActivities) 
+              ? dogData.favoriteActivities.join(', ') 
+              : '',
+            images: Array.isArray(dogData.images) ? dogData.images : []
+          });
+        } else {
+          setError('Dog profile not found');
+        }
+      } catch (err) {
+        console.error('Error fetching dog profile:', err);
+        setError('Error loading dog profile');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchDogProfile();
+  }, [id]);
   
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target as HTMLInputElement;
@@ -54,9 +100,9 @@ const DogProfile: React.FC = () => {
     if (e.target.files) {
       const newFiles = Array.from(e.target.files);
       
-      // Limit to 5 files max
-      if (uploadedFiles.length + newFiles.length > 5) {
-        setError('You can upload a maximum of 5 images.');
+      // Limit to 5 files max (considering already uploaded images)
+      if (formData.images.length + uploadedFiles.length + newFiles.length > 5) {
+        setError('You can upload a maximum of 5 images total.');
         return;
       }
       
@@ -76,6 +122,13 @@ const DogProfile: React.FC = () => {
     // Revoke object URL to prevent memory leaks
     URL.revokeObjectURL(uploadedImagePreviews[index]);
     setUploadedImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+  
+  const removeExistingImage = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index)
+    }));
   };
   
   const uploadImages = async (): Promise<string[]> => {
@@ -144,11 +197,18 @@ const DogProfile: React.FC = () => {
     
     try {
       if (!currentUser) {
-        throw new Error('You must be logged in to create a dog profile');
+        throw new Error('You must be logged in to update a dog profile');
       }
       
-      // Upload images first
-      const imageUrls = await uploadImages();
+      if (!id) {
+        throw new Error('No profile ID provided');
+      }
+      
+      // Upload new images
+      const newImageUrls = await uploadImages();
+      
+      // Combine with existing images that weren't removed
+      const allImages = [...formData.images, ...newImageUrls];
       
       // Convert age and weight to numbers
       const dogData = {
@@ -156,32 +216,37 @@ const DogProfile: React.FC = () => {
         age: parseInt(formData.age) || 0,
         weight: parseFloat(formData.weight) || 0,
         favoriteActivities: formData.favoriteActivities.split(',').map(activity => activity.trim()),
-        ownerId: currentUser.uid,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        // Add the uploaded image URLs
-        images: imageUrls,
-        // Generate a unique ID for the dog profile
-        id: uuidv4()
+        images: allImages,
+        updatedAt: new Date()
       };
       
-      // Save dog profile to Firestore
-      const dogProfileRef = doc(firestore, 'dogProfiles', dogData.id);
-      await setDoc(dogProfileRef, dogData);
+      // Update dog profile in Firestore
+      const dogProfileRef = doc(firestore, 'dogProfiles', id);
+      await updateDoc(dogProfileRef, dogData);
       
-      setSuccess('Dog profile created successfully!');
+      setSuccess('Dog profile updated successfully!');
       
-      // Reset form or navigate to dashboard after a delay
+      // Navigate to dog profile detail after a delay
       setTimeout(() => {
-        navigate('/dashboard');
+        navigate(`/dog-profile/${id}`);
       }, 2000);
       
     } catch (error: any) {
-      setError(error.message || 'Failed to create dog profile');
+      setError(error.message || 'Failed to update dog profile');
     } finally {
       setLoading(false);
     }
   };
+  
+  if (loading && !formData.name) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-dogswipe-yellow via-dogswipe-orange to-dogswipe-red pt-32 pb-24">
+        <div className="container mx-auto px-4 py-8 h-[calc(100vh-12rem)] flex items-center justify-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-dogswipe-yellow via-dogswipe-orange to-dogswipe-red pt-32 pb-24">
@@ -199,7 +264,7 @@ const DogProfile: React.FC = () => {
             {/* iPad Status Bar */}
             <div className="bg-gray-100 py-2 px-6 border-b border-gray-200 flex justify-between items-center">
               <div className="text-gray-700 font-medium">
-                DogSwipe - Dog Profile
+                DogSwipe - Edit {formData.name}'s Profile
               </div>
               <div className="flex items-center space-x-4">
                 <div className="text-xs text-gray-500">9:41 AM</div>
@@ -218,8 +283,20 @@ const DogProfile: React.FC = () => {
             {/* iPad Content */}
             <div className="flex-1 overflow-auto p-6">
               <div className="max-w-2xl mx-auto">
+                <div className="flex items-center mb-6">
+                  <button
+                    onClick={() => navigate(`/dog-profile/${id}`)}
+                    className="flex items-center text-gray-600 hover:text-dogswipe-orange transition-colors"
+                  >
+                    <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                    Back to Profile
+                  </button>
+                </div>
+                
                 <h1 className="text-3xl font-bold mb-8 font-poppins main-gradient text-center">
-                  {formData.name ? `${formData.name}'s Profile` : 'Add Your Dog'}
+                  Edit {formData.name}'s Profile
                 </h1>
                 
                 {error && (
@@ -448,7 +525,32 @@ const DogProfile: React.FC = () => {
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <h2 className="text-lg font-medium text-gray-800 mb-4">Photos</h2>
                         
-                        {/* Image upload area */}
+                        {/* Current Images */}
+                        {formData.images.length > 0 && (
+                          <div className="mb-4">
+                            <h3 className="text-sm font-medium text-gray-700 mb-2">Current Images</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {formData.images.map((image, index) => (
+                                <div key={index} className="relative">
+                                  <img 
+                                    src={image} 
+                                    alt={`Current ${index + 1}`}
+                                    className="w-24 h-24 object-cover rounded-lg"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeExistingImage(index)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Upload new images */}
                         <div 
                           onClick={() => fileInputRef.current?.click()}
                           className="border-dashed border-2 border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:bg-gray-100 transition-colors"
@@ -466,29 +568,32 @@ const DogProfile: React.FC = () => {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                           </svg>
                           <p className="mt-2 text-sm text-gray-500">
-                            Click to upload photos of your dog (max 5)
+                            Click to upload more photos (max 5 total)
                           </p>
                         </div>
                         
-                        {/* Preview of uploaded images */}
+                        {/* Preview of new uploaded images */}
                         {uploadedImagePreviews.length > 0 && (
-                          <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                            {uploadedImagePreviews.map((preview, index) => (
-                              <div key={index} className="relative">
-                                <img 
-                                  src={preview} 
-                                  alt={`Upload preview ${index + 1}`}
-                                  className="w-full h-24 object-cover rounded-lg"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removeImage(index)}
-                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
-                                >
-                                  ×
-                                </button>
-                              </div>
-                            ))}
+                          <div className="mt-4">
+                            <h3 className="text-sm font-medium text-gray-700 mb-2">New Images</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {uploadedImagePreviews.map((preview, index) => (
+                                <div key={index} className="relative">
+                                  <img 
+                                    src={preview} 
+                                    alt={`Upload preview ${index + 1}`}
+                                    className="w-24 h-24 object-cover rounded-lg"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removeImage(index)}
+                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -496,7 +601,7 @@ const DogProfile: React.FC = () => {
                       <div className="flex justify-between mt-8">
                         <button
                           type="button"
-                          onClick={() => navigate('/dashboard')}
+                          onClick={() => navigate(`/dog-profile/${id}`)}
                           className="px-6 py-2 bg-gray-200 text-gray-700 rounded-full font-medium hover:bg-gray-300 transition-colors"
                         >
                           Cancel
@@ -507,7 +612,7 @@ const DogProfile: React.FC = () => {
                           disabled={loading || uploadLoading}
                           className="px-6 py-2 bg-dogswipe-orange text-white rounded-full font-medium hover:bg-dogswipe-red transition-colors disabled:opacity-50"
                         >
-                          {loading || uploadLoading ? 'Saving...' : 'Save Dog Profile'}
+                          {loading || uploadLoading ? 'Saving...' : 'Save Changes'}
                         </button>
                       </div>
                     </form>
@@ -522,4 +627,4 @@ const DogProfile: React.FC = () => {
   );
 };
 
-export default DogProfile; 
+export default DogProfileEdit; 

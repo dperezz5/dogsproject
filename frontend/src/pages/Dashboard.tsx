@@ -178,7 +178,11 @@ const Dashboard: React.FC = () => {
                       ) : (
                         <div className="space-y-4">
                           {dogProfiles.map((dog) => (
-                            <div key={dog.id} className="flex items-center p-4 bg-gray-50 rounded-lg">
+                            <div 
+                              key={dog.id} 
+                              className="flex items-center p-4 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
+                              onClick={() => navigate(`/dog-profile/${dog.id}`)}
+                            >
                               {dog.images && dog.images.length > 0 ? (
                                 <img 
                                   src={dog.images[0]} 
@@ -190,9 +194,14 @@ const Dashboard: React.FC = () => {
                                   <span className="text-2xl text-gray-400">🐕</span>
                                 </div>
                               )}
-                              <div>
+                              <div className="flex-grow">
                                 <h3 className="font-semibold text-gray-800">{dog.name}</h3>
                                 <p className="text-sm text-gray-600">{dog.breed} • {dog.age} years old</p>
+                              </div>
+                              <div className="ml-4">
+                                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
                               </div>
                             </div>
                           ))}

@@ -8,6 +8,8 @@ import Register from './pages/auth/Register';
 import Dashboard from './pages/Dashboard';
 import EditProfile from './pages/EditProfile';
 import DogProfile from './pages/DogProfile';
+import DogProfileDetail from './pages/DogProfileDetail';
+import DogProfileEdit from './pages/DogProfileEdit';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider } from './context/AuthContext';
 import IPadLayout from './components/layout/IPadLayout';
@@ -72,6 +74,22 @@ const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <DogProfile />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/dog-profile/:id" 
+                element={
+                  <ProtectedRoute>
+                    <DogProfileDetail />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/dog-profile/edit/:id" 
+                element={
+                  <ProtectedRoute>
+                    <DogProfileEdit />
                   </ProtectedRoute>
                 } 
               />
