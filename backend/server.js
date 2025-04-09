@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const admin = require('firebase-admin');
+const cors = require('cors');
 const authMiddleware = require('./middleware/auth');
+const uploadsRouter = require('./routes/uploads');
 
 console.log('Starting server initialization...');
 
@@ -29,7 +31,8 @@ try {
   console.log('FIREBASE_CLIENT_ID:', process.env.FIREBASE_CLIENT_ID ? 'Set' : 'Not set');
 
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
+    credential: admin.credential.cert(serviceAccount),
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || 'dogswipe-8994c.firebasestorage.app'
   });
 
   console.log('Firebase Admin SDK initialized successfully');
@@ -42,10 +45,28 @@ const db = admin.firestore();
 
 // Initialize Express
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(cors({
+  origin: ['http://localhost:3002', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
+
+// Routes
+app.use('/api/uploads', uploadsRouter);
+
+// Protected routes using auth middleware
+app.use('/api/protected', authMiddleware, (req, res) => {
+  res.json({ message: 'This is a protected route', user: req.user });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // Public routes
 app.get('/', (req, res) => {
@@ -98,6 +119,6 @@ app.use((err, req, res, next) => {
 });
 
 // Start the server
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
 }); 
